@@ -1,1 +1,1 @@
-payload = currentPayload[::-1]
+payload = current_payload[::-1]

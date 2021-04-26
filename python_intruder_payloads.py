@@ -9,6 +9,8 @@ from burp import IIntruderPayloadGeneratorFactory, IIntruderPayloadProcessor
 import base64
 import traceback
 
+_helpers, _callbacks = None, None
+
 class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPayloadProcessor, IExtensionStateListener):
 
     #
@@ -17,8 +19,9 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPay
     
     def registerExtenderCallbacks(self, callbacks):
         # obtain an extension helpers object
-        self._helpers = callbacks.getHelpers()
-        self.callbacks = callbacks
+        global _helpers, _callbacks
+        _helpers = callbacks.getHelpers()
+        _callbacks = callbacks
 
         # load scripts from file
         try:
@@ -57,13 +60,14 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPay
     #
 
     def extensionUnloaded(self):
+        global _callbacks
         try:
             with open('generator_script.txt','w') as generator_script_fh:
                 generator_script_fh.write(self.python_payloads_tab.getGeneratorScript())
             with open('processor_script.txt','w') as processor_script_fh:
                 processor_script_fh.write(self.python_payloads_tab.getProcessorScript())
         except Exception:
-            traceback.print_exc(file=self.callbacks.getStderr())
+            traceback.print_exc(file=_callbacks.getStderr())
         return
 
     #
@@ -76,10 +80,11 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPay
 
     def createNewInstance(self, attack):
         # return a new IIntruderPayloadGenerator to generate payloads for this attack
+        global _callbacks
         try:
             code = compile(self.python_payloads_tab.getGeneratorScript(), '<string>', 'exec')
         except Exception as e:
-            traceback.print_exc(file=self.callbacks.getStderr())
+            traceback.print_exc(file=_callbacks.getStderr())
             return None
 
         return IntruderPayloadGenerator(code, attack)
@@ -92,6 +97,7 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPay
         return "Python Intruder Payloads"
 
     def processPayload(self, currentPayload, originalPayload, baseValue):
+        global _callbacks
         processor_script = self.python_payloads_tab.getProcessorScript()
         payload = None
 
@@ -99,14 +105,17 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPay
         try:
             processor_code = compile(processor_script, '<string>', 'exec')
         except Exception:
-            traceback.print_exc(file=self.callbacks.getStderr())
+            traceback.print_exc(file=_callbacks.getStderr())
             return None
 
         try:
+            base_value = _helpers.bytesToString(baseValue)
+            current_payload = _helpers.bytesToString(currentPayload)
+            original_payload = _helpers.bytesToString(originalPayload)
             exec(processor_code)
             return payload
         except Exception:
-            traceback.print_exc(file=self.callbacks.getStderr())
+            traceback.print_exc(file=_callbacks.getStderr())
             return None
 
 
@@ -205,17 +214,20 @@ class PythonPayloadsTab(ITab):
 
         # Create help label for payload generator
         payload_processor_help_text = 'Define a payload processor here.\n\n' \
+                                      'Burp Extender helper and callback functions are\n' \
+                                      'available from _helpers and _callbacks, such as\n' \
+                                      '_helpers.bytesToString(currentPayload)\n' \
                                       'The current payload is available in the\n' \
-                                      'variable "currentPayload".\n' \
+                                      'variable "current_payload".\n' \
                                       'The original pre-processed payload is available\n' \
-                                      'in the variable "originalPayload".\n' \
+                                      'in the variable "original_payload".\n' \
                                       'The original value at the inserted position\n' \
-                                      'is available in the variable "baseValue".\n' \
+                                      'is available in the variable "base_value".\n' \
                                       'The processed payload should be placed in the\n' \
                                       'variable "payload" as a string.\n\n' \
                                       'For example, to reverse the payload, you could\n' \
                                       'use the following script:\n\n' \
-                                      'payload = currentPayload[::-1]'
+                                      'payload = current_payload[::-1]'
         payload_processor_help_label = JTextArea(payload_processor_help_text)
         payload_processor_help_label.setEditable(False)
 
@@ -263,13 +275,14 @@ class PythonPayloadsTab(ITab):
 
 class IntruderPayloadGenerator(IIntruderPayloadGenerator):
     def __init__(self, code, attack):
+        global _helpers, _callbacks
         self._payloadIndex = 0
         payloads = []
         try:
             exec(code)
             self.payloads = payloads
         except Exception as e:
-            traceback.print_exc(file=self.callbacks.getStderr())
+            traceback.print_exc(file=_callbacks.getStderr())
 
     def hasMorePayloads(self):
         return self._payloadIndex < len(self.payloads)

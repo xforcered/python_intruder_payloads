@@ -21,12 +21,13 @@ payloads = map(str, range(10))
 # Writing processor scripts
 
 When writing processing scripts:
-* `baseValue` is the value from the original request where the insertion point was specified
-* `originalPayload` contains the payload without any processing applied
-* `currentPayload` contains the payload after any processing that has already been performed
+* Burp Extender [helpers](https://portswigger.net/burp/extender/api/burp/IExtensionHelpers.html) and [callbacks](https://portswigger.net/burp/extender/api/burp/IBurpExtenderCallbacks.html) are available to you via `_helpers`, and callbacks via `_callbacks`.
+* `base_value` is the value from the original request where the insertion point was specified
+* `original_payload` contains the payload without any processing applied
+* `current_payload` contains the payload after any processing that has already been performed
 * Your script should place the processed payload in `payload` as a string
 
 This processor script takes the unprocessed payload, reverses the order of the characters, and stores the result in `payload`, which Burp will then use as the processed payload:
 ```
-payload = currentPayload[::-1]
+payload = current_payload[::-1]
 ```
